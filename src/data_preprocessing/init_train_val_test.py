@@ -61,13 +61,13 @@ def split_guaranteed_and_remaining(
 @hydra.main(version_base=None, config_path="../../config", config_name="data_config")
 def main(cfg: DictConfig) -> None:
     fs = get_fs()
-    val_test_sample = int(cfg.val_test_sample)
+    val_sample = int(cfg.val_sample)
     train_sample = int(cfg.final_size)
     output_prefix = cfg.output_prefix
 
     train_key = f"{output_prefix}/shared/train_n{train_sample}.parquet"
-    val_key = f"{output_prefix}/shared/val_n{val_test_sample}.parquet"
-    test_key = f"{output_prefix}/shared/test_n{val_test_sample}.parquet"
+    val_key = f"{output_prefix}/shared/val_n{val_sample}.parquet"
+    test_key = f"{output_prefix}/shared/test.parquet"
 
     logger.info("Checking shared splits...")
 
@@ -91,7 +91,7 @@ def main(cfg: DictConfig) -> None:
     if not fs.exists(val_key):
         logger.info(f"Generating shared validation split → {val_key}")
         df_val = fetch_original_data(cfg.original_val_path, fs)
-        df_val = df_val.sample(n=val_test_sample, shuffle=True, seed=42)
+        df_val = df_val.sample(n=val_sample, shuffle=True, seed=42)
         with fs.open(val_key, "wb") as f:
             df_val.write_parquet(f)
     else:
@@ -101,7 +101,7 @@ def main(cfg: DictConfig) -> None:
     if not fs.exists(test_key):
         logger.info(f"Generating shared test split → {test_key}")
         df_test = fetch_original_data(cfg.original_test_path, fs)
-        df_test = df_test.sample(n=val_test_sample, shuffle=True, seed=42)
+        df_test = df_test.sample(fraction=1, shuffle=True, seed=42)
         with fs.open(test_key, "wb") as f:
             df_test.write_parquet(f)
     else:

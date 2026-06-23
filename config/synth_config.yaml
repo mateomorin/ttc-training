@@ -4,8 +4,9 @@ input_data:
   final_size: 50000
   synth_split: 0.3
   val_test_path: s3://mateom/graal/ttc-injection/v2/shared
-  val_test_sample: 30000
+  val_sample: 30000
   preprocessed: true
+  zones_path: s3://mateom/graal/distribution_zones.npz
 
 tokenizer:
   output_dim: 32

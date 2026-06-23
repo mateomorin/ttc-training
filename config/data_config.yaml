@@ -7,7 +7,7 @@ synth_names: [naive_exhaustive, retext1_distrib, retext1_exhaustive]
 synth_splits: [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]
 
 final_size: 50000
-val_test_sample: 30000
+val_sample: 30000
 output_prefix: s3://mateom/graal/ttc-injection/v2
 
 original_train_path: s3://projet-ape/data/08112022_27102024/naf2025/split/df_train.parquet

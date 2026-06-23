@@ -12,7 +12,7 @@ spec:
   entrypoint: main
   arguments:
     parameters:
-      - name: val_test_sample
+      - name: val_sample
         value: 30000
       - name: final_size
         value: 50000
@@ -34,7 +34,7 @@ spec:
     - name: main
       inputs:
         parameters:
-        - name: val_test_sample
+        - name: val_sample
         - name: final_size
         - name: preprocessed
         - name: synth_split
@@ -71,7 +71,7 @@ spec:
             # Run MLflow experiment
             uv run src/training/benchmark_synth.py -m \
                 training_config.accelerator=cuda \
-                input_data.val_test_sample={{inputs.parameters.val_test_sample}} \
+                input_data.val_sample={{inputs.parameters.val_sample}} \
                 input_data.final_size={{inputs.parameters.final_size}} \
                 input_data.preprocessed={{inputs.parameters.preprocessed}} \
                 input_data.synth_split={{inputs.parameters.synth_split}} \
