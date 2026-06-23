@@ -388,7 +388,7 @@ def main(cfg: DictConfig) -> None:
             tail       = tail
         )
 
-        mlflow.log_metrics(**zone_metrics)
+        mlflow.log_metrics(zone_metrics)
 
         # ------------------------------------------------------------------
         # Sauvegarde du modèle complet (modèle + tokenizer + value_encoder)
