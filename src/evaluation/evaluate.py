@@ -413,7 +413,7 @@ def main(cfg) -> None:
                 "source_run_id":      run_id,
                 "source_run_name":    run_name,
                 "source_synth_name":  params.get("input_data.synth_name",  "baseline"),
-                "source_synth_split": params.get("input_data.synth_split", "N/A"),
+                "source_synth_split": params.get("input_data.synth_split", 0),
                 "source_embedding_dim": embedding_dim,
                 "eval_test_size":     len(X_test),
                 "confidence_threshold": CONFIDENCE_THRESHOLD,

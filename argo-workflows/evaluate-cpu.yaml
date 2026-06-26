@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
-  generateName: evaluate-lvl4-
+  generateName: evaluate-
 spec:
   serviceAccountName: workflow
   volumes:
@@ -13,15 +13,13 @@ spec:
   templates:
     - name: main
       container:
-        image: inseefrlab/onyxia-vscode-pytorch:py3.13.5-gpu
+        image: inseefrlab/onyxia-vscode:py3.13.5
         imagePullPolicy: Always
         resources:
           limits:
-            nvidia.com/gpu: 1
             cpu: 4000m
             memory: 100Gi
           requests:
-              nvidia.com/gpu: 1  # Add GPU to requests too
               cpu: 300m
               memory: 30Gi
         command: ["/bin/bash", -c]
@@ -35,12 +33,10 @@ spec:
             cd ttc-training/
 
             # Setup
-            uv sync --extra gpu
+            uv sync --extra cpu
 
             # Run MLflow experiment
-            uv run src/evaluate/evaluate_level4.py
-
-            uv run src/evaluate/evaluate_level4.py experiment_id=6 select_run=467a5852f33844c5bac7513dcee87d3c
+            uv run src/evaluation/evaluate.py
 
         volumeMounts:
           - mountPath: /dev/shm

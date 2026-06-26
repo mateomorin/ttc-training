@@ -1,0 +1,80 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: baseline-solo-gpu-
+spec:
+  serviceAccountName: workflow
+  volumes:
+    - name: dshm
+      emptyDir:
+        medium: Memory
+        sizeLimit: 64Gi
+  entrypoint: main
+  templates:
+    - name: main
+      container:
+        image: inseefrlab/onyxia-vscode-pytorch:py3.13.5-gpu
+        imagePullPolicy: Always
+        resources:
+          limits:
+            nvidia.com/gpu: 1
+            cpu: 4000m
+            memory: 100Gi
+          requests:
+              nvidia.com/gpu: 1  # Add GPU to requests too
+              cpu: 300m
+              memory: 30Gi
+        command: ["/bin/bash", -c]
+        args:
+          - |
+            set -e  # Exit on error
+            set -x  # Print commands for debugging
+
+            # Clone repository and submodules
+            git clone -b main https://github.com/mateomorin/ttc-training.git
+            cd ttc-training/
+
+            # Setup
+            uv sync --extra gpu
+
+            # Run MLflow experiment
+            uv run src/training/benchmark_baseline.py training_config.accelerator=cuda
+
+        volumeMounts:
+          - mountPath: /dev/shm
+            name: dshm
+        env:
+          # env var for s3 connexion
+          - name: AWS_ACCESS_KEY_ID
+            valueFrom:
+              secretKeyRef:
+                name: s3-read-only
+                key: AWS_ACCESS_KEY_ID
+          - name: AWS_SECRET_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                name: s3-read-only
+                key: AWS_SECRET_ACCESS_KEY
+          - name: AWS_DEFAULT_REGION
+            value: us-east-1
+          - name: AWS_S3_ENDPOINT
+            value: minio.lab.sspcloud.fr
+          - name: MLFLOW_S3_ENDPOINT_URL
+            value: https://minio.lab.sspcloud.fr
+          - name: MLFLOW_TRACKING_URI
+            valueFrom:
+              secretKeyRef:
+                name: my-mlflow-creds
+                key: MLFLOW_TRACKING_URI 
+          - name: MLFLOW_TRACKING_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: my-mlflow-creds
+                key: MLFLOW_TRACKING_PASSWORD 
+          - name: MLFLOW_TRACKING_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: my-mlflow-creds
+                key: MLFLOW_TRACKING_USERNAME 
+          - name: CUBLAS_WORKSPACE_CONFIG       # For deterministic parallel computing
+            value: ":4096:8"
