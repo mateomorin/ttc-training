@@ -7,7 +7,10 @@ metrics + hyper-parameters to MLflow.
 """
 
 import logging
+import os
+import pickle
 import random
+import tempfile
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
@@ -40,20 +43,50 @@ def get_fs() -> s3fs.S3FileSystem:
     )
 
 
-def fetch_data(
+def fetch_train_data(
     input_path: str,
-    data_type: str,
     size: int,
     preprocessed: bool,
     fs: s3fs.S3FileSystem = None
 ) -> pl.DataFrame:
     opener = fs.open if fs else open
     input_path = input_path.strip("/")
-    preprocessed = "_preprocessed" if preprocessed else ""
-    path = f"{input_path}/{data_type}_n{size}{preprocessed}.parquet"
+    preprocessed_str = "_preprocessed" if preprocessed else ""
+    path = f"{input_path}/train_n{size}{preprocessed_str}.parquet"
     with opener(path) as f:
         df = pl.read_parquet(f)
     return df
+
+
+def fetch_val_test_data(
+    input_path: str,
+    val_sample: int,
+    preprocessed: bool,
+    fs: s3fs.S3FileSystem = None
+) -> tuple:
+    opener = fs.open if fs else open
+    input_path = input_path.strip("/")
+    preprocessed_str = "_preprocessed" if preprocessed else ""
+    val_path = f"{input_path}/val_n{val_sample}{preprocessed_str}.parquet"
+    with opener(val_path) as f:
+        df_val = pl.read_parquet(f)
+    test_path = f"{input_path}/test{preprocessed_str}.parquet"
+    with opener(test_path) as f:
+        df_test = pl.read_parquet(f)
+    return df_val, df_test
+
+
+def fetch_zones(
+    zones_path: str,
+    fs: s3fs.S3FileSystem = None
+) -> tuple:
+    opener = fs.open if fs else open
+    with opener(zones_path, "rb") as f:
+        with np.load(f, allow_pickle=True) as data:
+            head = data["head"]
+            body = data["body"]
+            tail = data["tail"]
+    return head, body, tail
 
 
 def flatten_dict(d: dict, parent_key: str = '', sep: str = '.') -> dict:
@@ -78,10 +111,70 @@ def set_seeds():
         torch.backends.cudnn.benchmark = False
 
 
+def compute_zone_metrics(
+    y_true: np.ndarray,
+    preds_top1: np.ndarray,
+    preds_top5: np.ndarray,
+    conf_top1: np.ndarray,
+    head: np.ndarray,
+    body: np.ndarray,
+    tail: np.ndarray,
+    confidence_threshold: float = 0.70,
+) -> dict:
+    metrics = {}
+    for zone_name, zone_codes in [("head", head), ("body", body), ("tail", tail)]:
+        mask = np.isin(y_true, list(zone_codes))
+        n = mask.sum()
+        if n == 0:
+            logger.warning(f"Zone {zone_name} : aucun exemple dans le test set.")
+            metrics.update({
+                f"{zone_name}_n_samples":        0,
+                f"{zone_name}_n_codes_seen":     0,
+                f"{zone_name}_acc_top1":         0.0,
+                f"{zone_name}_acc_top5":         0.0,
+                f"{zone_name}_f1_macro":         0.0,
+                f"{zone_name}_coverage_rate":    0.0,
+                f"{zone_name}_acc_confident":    0.0,
+            })
+            continue
+
+        yt   = y_true[mask]
+        p1   = preds_top1[mask]
+        p5   = preds_top5[mask]
+        conf = conf_top1[mask]
+
+        acc1 = (p1 == yt).mean()
+        acc5 = np.any(p5 == yt[:, None], axis=1).mean()
+        f1   = f1_score(yt, p1, average="macro", zero_division=0)
+        n_codes_seen = len(np.unique(yt))
+
+        confident_mask   = conf > confidence_threshold
+        coverage_rate    = confident_mask.mean()
+        acc_confident    = (
+            (p1[confident_mask] == yt[confident_mask]).mean()
+            if confident_mask.sum() > 0 else 0.0
+        )
+
+        logger.info(
+            f"Zone {zone_name:4s} | n={n:6d} | codes vus={n_codes_seen:3d}/{len(zone_codes):3d} "
+            f"| Acc@1={acc1:.4f} | Acc@5={acc5:.4f} | F1={f1:.4f} "
+            f"| Coverage={coverage_rate:.4f} | Acc@conf>{int(confidence_threshold*100)}%={acc_confident:.4f}"
+        )
+        metrics.update({
+            f"{zone_name}_n_samples":     int(n),
+            f"{zone_name}_n_codes_seen":  int(n_codes_seen),
+            f"{zone_name}_acc_top1":      acc1,
+            f"{zone_name}_acc_top5":      acc5,
+            f"{zone_name}_f1_macro":      f1,
+            f"{zone_name}_coverage_rate": coverage_rate,
+            f"{zone_name}_acc_confident": acc_confident,
+        })
+    return metrics
+
+
 # ---------------------------------------------------------------------------
 # Main Entrypoint with Hydra
 # ---------------------------------------------------------------------------
-
 @hydra.main(version_base=None, config_path="../../config", config_name="benchmark_config")
 def main(cfg: DictConfig) -> None:
     set_seeds()
@@ -91,33 +184,29 @@ def main(cfg: DictConfig) -> None:
     preprocessed = cfg.input_data.preprocessed
     final_size = int(cfg.input_data.final_size)
     val_test_sample = int(cfg.input_data.val_test_sample)
+    zones_path = cfg.input_data.zones_path
 
     # ------------------------------------------------------------------
     # Load data
     # ------------------------------------------------------------------
     logger.info("Loading data …")
 
-    df_train = fetch_data(
+    df_train = fetch_train_data(
         input_path=input_path,
-        data_type="train",
         size=final_size,
         preprocessed=preprocessed,
         fs=fs
     )
 
-    df_val = fetch_data(
+    df_val, df_test = fetch_val_test_data(
         input_path=input_path,
-        data_type="val",
-        size=val_test_sample,
+        val_sample=val_test_sample,
         preprocessed=preprocessed,
         fs=fs
     )
 
-    df_test = fetch_data(
-        input_path=input_path,
-        data_type="test",
-        size=val_test_sample,
-        preprocessed=preprocessed,
+    head, body, tail = fetch_zones(
+        zones_path=zones_path,
         fs=fs
     )
 
@@ -186,7 +275,7 @@ def main(cfg: DictConfig) -> None:
     # MLflow Setup & Parameters Logging
     # ------------------------------------------------------------------
     mlflow.set_experiment("benchmark-baseline")
-    mlflow.pytorch.autolog()
+    mlflow.pytorch.autolog(log_models=False)
 
     # Flat dictionary reconstruit depuis le DictConfig d'Hydra pour MLflow
     cfg_dict = OmegaConf.to_container(cfg, resolve=True)
@@ -275,7 +364,41 @@ def main(cfg: DictConfig) -> None:
             "f1_score_weighted":       f1_weighted,
         })
 
-    logger.info("Done.")
+        # ------------------------------------------------------------------
+        # Métriques par zone Head / Body / Tail
+        # ------------------------------------------------------------------
+        zone_metrics = compute_zone_metrics(
+            y_true     = y_test_arr,
+            preds_top1 = preds_top1,
+            preds_top5 = preds_top5,
+            conf_top1  = conf_top1_arr,
+            head       = head,
+            body       = body,
+            tail       = tail
+        )
+
+        mlflow.log_metrics(zone_metrics)
+
+        # ------------------------------------------------------------------
+        # Sauvegarde du pipeline complet (modèle + tokenizer + value_encoder)
+        # ------------------------------------------------------------------
+        logger.info("Sauvegarde du pipeline complet …")
+        with tempfile.TemporaryDirectory() as tmp:
+            tok_path = os.path.join(tmp, "tokenizer.pkl")
+            enc_path = os.path.join(tmp, "value_encoder.pkl")
+            with open(tok_path, "wb") as f:
+                pickle.dump(tokenizer, f)
+            with open(enc_path, "wb") as f:
+                pickle.dump(value_encoder, f)
+            mlflow.log_artifacts(tmp, artifact_path="pipeline")
+
+        mlflow.pytorch.log_model(
+            ttc.pytorch_model,
+            artifact_path="model",
+            registered_model_name="benchmark-baseline",
+        )
+
+        logger.info("Done.")
 
 
 if __name__ == "__main__":
