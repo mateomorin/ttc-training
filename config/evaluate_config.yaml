@@ -1,0 +1,5 @@
+experiment_id: 8
+val_test_path: s3://mateom/graal/ttc-injection/v2/shared
+preprocessed: true
+zones_path: s3://mateom/graal/distribution_zones.npz
+select_run: null
