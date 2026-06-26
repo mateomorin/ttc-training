@@ -13,11 +13,11 @@ spec:
   templates:
     - name: main
       container:
-        image: inseefrlab/onyxia-vscode:py3.13.5
+        image: inseefrlab/onyxia-vscode-python:py3.13.5
         imagePullPolicy: Always
         resources:
           limits:
-            cpu: 4000m
+            cpu: 8000m
             memory: 100Gi
           requests:
               cpu: 300m
