@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
-  generateName: benchmark-synth-
+  generateName: evaluate-lvl4-
 spec:
   serviceAccountName: workflow
   volumes:
@@ -38,9 +38,9 @@ spec:
             uv sync --extra gpu
 
             # Run MLflow experiment
-            uv run src/evaluate/evaluate_lvl4.py
+            uv run src/evaluate/evaluate_level4.py
 
-            uv run src/evaluate/evaluate_lvl4.py experiment_id=6 select_run=467a5852f33844c5bac7513dcee87d3c
+            uv run src/evaluate/evaluate_level4.py experiment_id=6 select_run=467a5852f33844c5bac7513dcee87d3c
 
         volumeMounts:
           - mountPath: /dev/shm

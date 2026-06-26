@@ -33,8 +33,6 @@ from dotenv import load_dotenv
 from mlflow.tracking import MlflowClient
 from sklearn.metrics import f1_score
 from torchTextClassifiers import ModelConfig, torchTextClassifiers
-from torchTextClassifiers.tokenizers import WordPieceTokenizer
-from torchTextClassifiers.value_encoder import ValueEncoder
 
 load_dotenv(override=True)
 
@@ -290,7 +288,7 @@ def get_runs_from_experiment(
     logger.info(f"{len(runs)} runs FINISHED trouvés dans l'experiment {experiment_id}.")
 
     if select_run is not None:
-        runs = runs[runs["run_id"] == select_run]
+        runs = [run for run in runs if run.info.run_id == select_run]
         logger.info(f"Sélection de la run {select_run} dans l'expérience {experiment_id}.")
     return runs
 
